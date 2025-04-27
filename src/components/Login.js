@@ -1,7 +1,7 @@
 import { View, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { Card, Text, TextInput } from "react-native-paper";
 import React, { useState } from "react";
-// Update the import
+
 import { auth } from '../services/connectionFirebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import DevAutomateIcon from '../../assets/icon.png';

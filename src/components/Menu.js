@@ -26,7 +26,6 @@ function ListScreen() {
     const [errors, setErrors] = React.useState({});
     const [editingId, setEditingId] = React.useState(null);
 
-    // Add the missing validateInputs function
     const validateInputs = () => {
         const newErrors = {};
         if (!newFood.name) newErrors.name = true;
@@ -39,21 +38,16 @@ function ListScreen() {
         return Object.keys(newErrors).length === 0;
     };
 
-    // Update the formatPrice function
     const formatPrice = (text) => {
-        // Remove any non-numeric characters
         const numericValue = text.replace(/[^0-9]/g, '');
         
-        // Pad with zeros if necessary
         const paddedValue = numericValue.padStart(4, '0');
         
-        // Insert decimal point
         const formattedPrice = (paddedValue.slice(0, -2) + '.' + paddedValue.slice(-2)).replace(/^0+(\d)/, '$1');
         
         return formattedPrice;
     };
 
-    // Add this useEffect to fetch and listen to database changes
     React.useEffect(() => {
         const foodsRef = ref(db, 'foods');
         const unsubscribe = onValue(foodsRef, (snapshot) => {
@@ -69,7 +63,6 @@ function ListScreen() {
             }
         });
 
-        // Cleanup subscription
         return () => unsubscribe();
     }, []);
 
@@ -108,11 +101,10 @@ function ListScreen() {
             const userEmail = auth.currentUser?.email || 'anonymous';
             const foodRef = ref(db, `foods/${editingId}`);
             
-            // Get the existing food data first
             const existingFood = foodList.find(food => food.id === editingId);
             
             set(foodRef, {
-                ...existingFood,  // Preserve existing data
+                ...existingFood,
                 name: newFood.name,
                 price: newFood.price,
                 category: newFood.category,
@@ -137,7 +129,6 @@ function ListScreen() {
         const foodRef = ref(db, `foods/${id}`);
         set(foodRef, null)
             .then(() => {
-                // Item will be automatically removed from the list due to our useEffect listener
             })
             .catch((error) => {
                 console.error("Error deleting food: ", error);
@@ -186,7 +177,6 @@ function ListScreen() {
     const handleSubmit = () => {
         if (validateInputs()) {
             if (editingId) {
-                // Update existing food
                 const foodRef = ref(db, `foods/${editingId}`);
                 set(foodRef, {
                     name: newFood.name,
@@ -206,7 +196,6 @@ function ListScreen() {
                     alert('Erro ao atualizar produto');
                 });
             } else {
-                // Add new food
                 const foodsRef = ref(db, 'foods');
                 const newFoodRef = push(foodsRef);
                 
@@ -313,8 +302,6 @@ function ListScreen() {
                     }}
                 />
                 {errors.calories && <Text style={styles.errorText}>Calorias é obrigatório</Text>}
-
-                {/* Replace the single Add button with conditional buttons */}
                 {editingId ? (
                     <View style={styles.formButtonsContainer}>
                         <TouchableOpacity 
