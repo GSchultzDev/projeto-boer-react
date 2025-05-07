@@ -9,7 +9,6 @@ import { ref, push, onValue, set } from 'firebase/database';
 function HomeScreen() {
     return (
 <View style={styles.container}>
-<Text></Text>
 </View>
     );
 }
@@ -27,7 +26,6 @@ function ListScreen() {
     const [errors, setErrors] = React.useState({});
     const [editingId, setEditingId] = React.useState(null);
     
-    // Add these new states for tag management
     const [categoryTags, setCategoryTags] = React.useState(['RPG', 'Ação', 'Aventura', 'Estratégia', 'Esporte', 'Simulação', 'Corrida']);
     const [platformTags, setPlatformTags] = React.useState(['PC', 'PS5', 'PS4', 'Xbox Series X', 'Xbox One', 'Nintendo Switch', 'Mobile']);
     const [selectedCategoryTags, setSelectedCategoryTags] = React.useState([]);
@@ -150,7 +148,6 @@ function ListScreen() {
             });
     };
 
-    // Add this function to handle tag selection
     const toggleCategoryTag = (tag) => {
         if (selectedCategoryTags.includes(tag)) {
             setSelectedCategoryTags(selectedCategoryTags.filter(t => t !== tag));
@@ -158,7 +155,6 @@ function ListScreen() {
             setSelectedCategoryTags([...selectedCategoryTags, tag]);
         }
         
-        // Update the newgame state with the selected tags
         setNewgame({
             ...newgame,
             category: selectedCategoryTags.includes(tag) 
@@ -176,7 +172,6 @@ function ListScreen() {
             setSelectedPlatformTags([...selectedPlatformTags, tag]);
         }
         
-        // Update the newgame state with the selected tags
         setNewgame({
             ...newgame,
             platform: selectedPlatformTags.includes(tag) 
@@ -187,7 +182,6 @@ function ListScreen() {
         setErrors({ ...errors, platform: false });
     };
 
-    // Add this function to add new custom tags
     const addCustomCategoryTag = () => {
         if (newCategoryTag && !categoryTags.includes(newCategoryTag)) {
             setCategoryTags([...categoryTags, newCategoryTag]);
@@ -206,11 +200,9 @@ function ListScreen() {
         }
     };
 
-    // Modify the startEditing function to handle tags
     const startEditing = (item) => {
         setEditingId(item.id);
         
-        // Parse the category and platform strings into arrays
         const categoryArray = item.category ? item.category.split(', ') : [];
         const platformArray = item.platform ? item.platform.split(', ') : [];
         
@@ -227,7 +219,6 @@ function ListScreen() {
         });
     };
 
-    // Modify the cancelEdit function to reset tags
     const cancelEdit = () => {
         setEditingId(null);
         setNewgame({ name: '', price: '', category: '', description: '', releaseYear: '', platform: '' });
@@ -296,51 +287,6 @@ function ListScreen() {
             </View>
         </View>
     );
-
-    const handleSubmit = () => {
-        if (validateInputs()) {
-            if (editingId) {
-                const gameRef = ref(db, `games/${editingId}`);
-                set(gameRef, {
-                    name: newgame.name,
-                    price: newgame.price,
-                    category: newgame.category,
-                    description: newgame.description,
-                    calories: newgame.calories,
-                    updatedAt: new Date().toISOString()
-                })
-                .then(() => {
-                    setNewgame({ name: '', price: '', category: '', description: '', calories: '' });
-                    setErrors({});
-                    setEditingId(null);
-                })
-                .catch((error) => {
-                    console.error("Error updating game: ", error);
-                    alert('Erro ao atualizar produto');
-                });
-            } else {
-                const gamesRef = ref(db, 'games');
-                const newgameRef = push(gamesRef);
-                
-                set(newgameRef, {
-                    name: newgame.name,
-                    price: newgame.price,
-                    category: newgame.category,
-                    description: newgame.description,
-                    calories: newgame.calories,
-                    createdAt: new Date().toISOString()
-                })
-                .then(() => {
-                    setNewgame({ name: '', price: '', category: '', description: '', calories: '' });
-                    setErrors({});
-                })
-                .catch((error) => {
-                    console.error("Error adding game: ", error);
-                    alert('Erro ao adicionar produto');
-                });
-            }
-        }
-    };
 
     return (
         <View style={styles.container}>
@@ -543,7 +489,6 @@ function ListScreen() {
 function PostScreen() {
     return (
 <View style={styles.container}>
-<Text></Text>
 </View>
     );
 }
@@ -552,7 +497,7 @@ function PostScreen2() {
     const [newPromotion, setNewPromotion] = React.useState({
         name: '',
         discountPercentage: '',
-        tagType: 'category', // 'category' or 'platform'
+        tagType: 'category',
         tagValue: '',
         startDate: new Date().toISOString().split('T')[0],
         endDate: ''
@@ -563,12 +508,10 @@ function PostScreen2() {
     const [categoryTags, setCategoryTags] = React.useState(['RPG', 'Ação', 'Aventura', 'Estratégia', 'Esporte', 'Simulação', 'Corrida']);
     const [platformTags, setPlatformTags] = React.useState(['PC', 'PS5', 'PS4', 'Xbox Series X', 'Xbox One', 'Nintendo Switch', 'Mobile']);
     
-    // Load games and promotions on component mount
     React.useEffect(() => {
         const gamesRef = ref(db, 'games');
         const promotionsRef = ref(db, 'promotions');
         
-        // Load games
         const gamesUnsubscribe = onValue(gamesRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -578,7 +521,6 @@ function PostScreen2() {
                 }));
                 setGameList(gameArray);
                 
-                // Extract unique category and platform tags
                 const categories = new Set();
                 const platforms = new Set();
                 
@@ -601,7 +543,6 @@ function PostScreen2() {
             }
         });
         
-        // Load promotions
         const promotionsUnsubscribe = onValue(promotionsRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -629,13 +570,11 @@ function PostScreen2() {
         if (!newPromotion.startDate) newErrors.startDate = true;
         if (!newPromotion.endDate) newErrors.endDate = true;
         
-        // Validate discount percentage is between 1 and 99
         const discount = parseInt(newPromotion.discountPercentage);
         if (isNaN(discount) || discount < 1 || discount > 99) {
             newErrors.discountPercentage = true;
         }
         
-        // Validate end date is after start date
         if (newPromotion.startDate && newPromotion.endDate) {
             const start = new Date(newPromotion.startDate);
             const end = new Date(newPromotion.endDate);
@@ -759,9 +698,9 @@ function PostScreen2() {
         setErrors({});
     };
     
-    // Function to apply promotions to games
+    
     const applyPromotionsToGames = () => {
-        // Get all active promotions
+        
         const promotionsRef = ref(db, 'promotions');
         onValue(promotionsRef, (snapshot) => {
             const promotionsData = snapshot.val();
@@ -774,12 +713,10 @@ function PostScreen2() {
                 return promo.active && now >= startDate && now <= endDate;
             });
             
-            // Apply promotions to each game
             gameList.forEach(game => {
                 let highestDiscount = 0;
                 let appliedPromotion = null;
                 
-                // Find the highest applicable discount
                 activePromotions.forEach(promo => {
                     const gameHasTag = promo.tagType === 'category' 
                         ? game.category && game.category.includes(promo.tagValue)
@@ -791,7 +728,6 @@ function PostScreen2() {
                     }
                 });
                 
-                // Update game with promotion info
                 const gameRef = ref(db, `games/${game.id}`);
                 if (appliedPromotion) {
                     const originalPrice = parseFloat(game.price);
@@ -807,7 +743,6 @@ function PostScreen2() {
                         promotionName: appliedPromotion.name
                     });
                 } else if (game.onSale) {
-                    // Remove promotion if no longer applicable
                     set(gameRef, {
                         ...game,
                         onSale: false,
@@ -1048,13 +983,6 @@ function PostScreen2() {
         </View>
     );
 }
-function APIScreen() {
-    return (
-<View style={styles.container}>
-<Text></Text>
-</View>
-    );
-}
 const Tab = createBottomTabNavigator();
 export default function Menu() {
     return (
@@ -1082,7 +1010,7 @@ export default function Menu() {
                         }
                         return <Icon name={iconName} size={size} color={color} />;
                     },
-                    tabBarActiveTintColor: '#4a148c', // Purple color for gaming theme
+                    tabBarActiveTintColor: '#4a148c',
                     tabBarInactiveTintColor: '#9ea2a3',
                     tabBarStyle: { height: 65 }, 
                     tabBarLabelStyle: { fontSize: 12 },
@@ -1104,7 +1032,6 @@ export default function Menu() {
     );
 }
 const styles = StyleSheet.create({
-    // Layout and Container Styles
     container: {
         flex: 1,
         justifyContent: 'center',
@@ -1116,7 +1043,6 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     
-    // Text Styles
     formTitle: {
         fontSize: 24,
         fontWeight: 'bold',
@@ -1149,7 +1075,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     
-    // Input Styles
     input: {
         borderWidth: 1,
         borderColor: '#ddd',
@@ -1166,9 +1091,8 @@ const styles = StyleSheet.create({
         borderColor: '#f44336',
     },
     
-    // Button Styles
     addButton: {
-        backgroundColor: '#4a148c', // Purple color for gaming theme
+        backgroundColor: '#4a148c',
         padding: 15,
         borderRadius: 5,
         alignItems: 'center',
@@ -1180,7 +1104,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     updateButton: {
-        backgroundColor: '#4a148c', // Purple color for gaming theme
+        backgroundColor: '#4a148c',
         flex: 1,
         marginRight: 5,
     },
@@ -1202,13 +1126,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     editButton: {
-        backgroundColor: '#4a148c', // Purple color for gaming theme
+        backgroundColor: '#4a148c',
     },
     deleteButton: {
         backgroundColor: '#f44336',
     },
     
-    // List and Item Styles
     list: {
         width: '100%',
     },
@@ -1239,7 +1162,6 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     
-    // Header Styles
     gameHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -1259,11 +1181,10 @@ const styles = StyleSheet.create({
         paddingBottom: 10,
     },
     
-    // Title Styles
     gameTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#4a148c', // Purple color for gaming theme
+        color: '#4a148c',
         flex: 3,
     },
     promotionTitle: {
@@ -1273,7 +1194,6 @@ const styles = StyleSheet.create({
         flex: 3,
     },
     
-    // Price Styles
     gamePrice: {
         fontSize: 18,
         fontWeight: 'bold',
@@ -1297,7 +1217,6 @@ const styles = StyleSheet.create({
         color: '#f44336',
     },
     
-    // Detail Styles
     gameDetails: {
         marginBottom: 10,
     },
@@ -1322,7 +1241,6 @@ const styles = StyleSheet.create({
         color: '#f44336',
     },
     
-    // Description Styles
     descriptionContainer: {
         marginTop: 5,
     },
@@ -1332,7 +1250,6 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
     
-    // Badge Styles
     statusBadge: {
         paddingHorizontal: 10,
         paddingVertical: 5,
@@ -1362,7 +1279,6 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     
-    // Tab Navigation Styles
     iconTabRound: {
         width: 60,
         height: 90,
@@ -1378,7 +1294,6 @@ const styles = StyleSheet.create({
         shadowRadius: 5,
     },
     
-    // Tag System Styles
     tagContainer: {
         flexDirection: 'row',
         flexWrap: 'nowrap',
@@ -1444,7 +1359,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     
-    // Radio Button Styles
     radioContainer: {
         flexDirection: 'row',
         marginBottom: 15,
@@ -1478,7 +1392,6 @@ const styles = StyleSheet.create({
         color: '#333',
     },
     
-    // Promotion Specific Styles
     affectedGamesText: {
         fontSize: 14,
         color: '#4a148c',
