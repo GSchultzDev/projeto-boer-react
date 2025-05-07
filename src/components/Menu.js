@@ -492,6 +492,13 @@ function PostScreen() {
 </View>
     );
 }
+function APIScreen() {
+    return (
+        <View style={styles.container}>
+            <Text></Text>
+        </View>
+    );
+}
 function PostScreen2() {
     const [promotions, setPromotions] = React.useState([]);
     const [newPromotion, setNewPromotion] = React.useState({
@@ -1026,6 +1033,10 @@ export default function Menu() {
                 <Tab.Screen
                     name="Comentarios"
                     component={PostScreen}
+                />
+                <Tab.Screen
+                    name="Ler API"
+                    component={APIScreen}
                 />
             </Tab.Navigator>
         </NavigationContainer>
