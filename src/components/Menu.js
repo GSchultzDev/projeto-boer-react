@@ -240,7 +240,14 @@ function ListScreen() {
         <View style={styles.gameItem}>
             <View style={styles.gameHeader}>
                 <Text style={styles.gameTitle}>{item.name}</Text>
-                <Text style={styles.gamePrice}>R$ {item.price}</Text>
+                {item.onSale ? (
+                    <View style={styles.priceContainer}>
+                        <Text style={styles.originalPrice}>R$ {item.originalPrice}</Text>
+                        <Text style={styles.discountedPrice}>R$ {item.price}</Text>
+                    </View>
+                ) : (
+                    <Text style={styles.gamePrice}>R$ {item.price}</Text>
+                )}
             </View>
             
             <View style={styles.gameDetails}>
@@ -258,6 +265,13 @@ function ListScreen() {
                     <Text style={styles.detailLabel}>Ano:</Text>
                     <Text style={styles.detailValue}>{item.releaseYear}</Text>
                 </View>
+                
+                {item.onSale && (
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Promoção:</Text>
+                        <Text style={styles.discountBadge}>{item.discountPercentage}% OFF</Text>
+                    </View>
+                )}
                 
                 <View style={styles.descriptionContainer}>
                     <Text style={styles.detailLabel}>Descrição:</Text>
@@ -534,10 +548,504 @@ function PostScreen() {
     );
 }
 function PostScreen2() {
+    const [promotions, setPromotions] = React.useState([]);
+    const [newPromotion, setNewPromotion] = React.useState({
+        name: '',
+        discountPercentage: '',
+        tagType: 'category', // 'category' or 'platform'
+        tagValue: '',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: ''
+    });
+    const [errors, setErrors] = React.useState({});
+    const [editingId, setEditingId] = React.useState(null);
+    const [gameList, setGameList] = React.useState([]);
+    const [categoryTags, setCategoryTags] = React.useState(['RPG', 'Ação', 'Aventura', 'Estratégia', 'Esporte', 'Simulação', 'Corrida']);
+    const [platformTags, setPlatformTags] = React.useState(['PC', 'PS5', 'PS4', 'Xbox Series X', 'Xbox One', 'Nintendo Switch', 'Mobile']);
+    
+    // Load games and promotions on component mount
+    React.useEffect(() => {
+        const gamesRef = ref(db, 'games');
+        const promotionsRef = ref(db, 'promotions');
+        
+        // Load games
+        const gamesUnsubscribe = onValue(gamesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const gameArray = Object.entries(data).map(([key, value]) => ({
+                    id: key,
+                    ...value
+                }));
+                setGameList(gameArray);
+                
+                // Extract unique category and platform tags
+                const categories = new Set();
+                const platforms = new Set();
+                
+                gameArray.forEach(game => {
+                    if (game.category) {
+                        game.category.split(', ').forEach(cat => categories.add(cat));
+                    }
+                    if (game.platform) {
+                        game.platform.split(', ').forEach(plat => platforms.add(plat));
+                    }
+                });
+                
+                if (categories.size > 0) {
+                    setCategoryTags(Array.from(categories));
+                }
+                
+                if (platforms.size > 0) {
+                    setPlatformTags(Array.from(platforms));
+                }
+            }
+        });
+        
+        // Load promotions
+        const promotionsUnsubscribe = onValue(promotionsRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const promotionArray = Object.entries(data).map(([key, value]) => ({
+                    id: key,
+                    ...value
+                }));
+                setPromotions(promotionArray);
+            } else {
+                setPromotions([]);
+            }
+        });
+        
+        return () => {
+            gamesUnsubscribe();
+            promotionsUnsubscribe();
+        };
+    }, []);
+    
+    const validateInputs = () => {
+        const newErrors = {};
+        if (!newPromotion.name) newErrors.name = true;
+        if (!newPromotion.discountPercentage) newErrors.discountPercentage = true;
+        if (!newPromotion.tagValue) newErrors.tagValue = true;
+        if (!newPromotion.startDate) newErrors.startDate = true;
+        if (!newPromotion.endDate) newErrors.endDate = true;
+        
+        // Validate discount percentage is between 1 and 99
+        const discount = parseInt(newPromotion.discountPercentage);
+        if (isNaN(discount) || discount < 1 || discount > 99) {
+            newErrors.discountPercentage = true;
+        }
+        
+        // Validate end date is after start date
+        if (newPromotion.startDate && newPromotion.endDate) {
+            const start = new Date(newPromotion.startDate);
+            const end = new Date(newPromotion.endDate);
+            if (end <= start) {
+                newErrors.endDate = true;
+            }
+        }
+        
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+    
+    const addPromotion = () => {
+        if (validateInputs()) {
+            const auth = getAuth();
+            const userEmail = auth.currentUser?.email || 'anonymous';
+            const promotionsRef = ref(db, 'promotions');
+            const newPromotionRef = push(promotionsRef);
+            
+            set(newPromotionRef, {
+                name: newPromotion.name,
+                discountPercentage: newPromotion.discountPercentage,
+                tagType: newPromotion.tagType,
+                tagValue: newPromotion.tagValue,
+                startDate: newPromotion.startDate,
+                endDate: newPromotion.endDate,
+                createdAt: new Date().toISOString(),
+                createdBy: userEmail,
+                active: true
+            })
+            .then(() => {
+                setNewPromotion({
+                    name: '',
+                    discountPercentage: '',
+                    tagType: 'category',
+                    tagValue: '',
+                    startDate: new Date().toISOString().split('T')[0],
+                    endDate: ''
+                });
+                setErrors({});
+                applyPromotionsToGames();
+            })
+            .catch((error) => {
+                console.error("Error adding promotion: ", error);
+                alert('Erro ao adicionar promoção');
+            });
+        }
+    };
+    
+    const updatePromotion = () => {
+        if (validateInputs() && editingId) {
+            const auth = getAuth();
+            const userEmail = auth.currentUser?.email || 'anonymous';
+            const promotionRef = ref(db, `promotions/${editingId}`);
+            
+            set(promotionRef, {
+                name: newPromotion.name,
+                discountPercentage: newPromotion.discountPercentage,
+                tagType: newPromotion.tagType,
+                tagValue: newPromotion.tagValue,
+                startDate: newPromotion.startDate,
+                endDate: newPromotion.endDate,
+                updatedAt: new Date().toISOString(),
+                lastUpdatedBy: userEmail,
+                active: true
+            })
+            .then(() => {
+                setNewPromotion({
+                    name: '',
+                    discountPercentage: '',
+                    tagType: 'category',
+                    tagValue: '',
+                    startDate: new Date().toISOString().split('T')[0],
+                    endDate: ''
+                });
+                setErrors({});
+                setEditingId(null);
+                applyPromotionsToGames();
+            })
+            .catch((error) => {
+                console.error("Error updating promotion: ", error);
+                alert('Erro ao atualizar promoção');
+            });
+        }
+    };
+    
+    const deletePromotion = (id) => {
+        const promotionRef = ref(db, `promotions/${id}`);
+        set(promotionRef, null)
+            .then(() => {
+                applyPromotionsToGames();
+            })
+            .catch((error) => {
+                console.error("Error deleting promotion: ", error);
+                alert('Erro ao deletar promoção');
+            });
+    };
+    
+    const startEditing = (item) => {
+        setEditingId(item.id);
+        setNewPromotion({
+            name: item.name,
+            discountPercentage: item.discountPercentage,
+            tagType: item.tagType || 'category',
+            tagValue: item.tagValue,
+            startDate: item.startDate,
+            endDate: item.endDate
+        });
+    };
+    
+    const cancelEdit = () => {
+        setEditingId(null);
+        setNewPromotion({
+            name: '',
+            discountPercentage: '',
+            tagType: 'category',
+            tagValue: '',
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: ''
+        });
+        setErrors({});
+    };
+    
+    // Function to apply promotions to games
+    const applyPromotionsToGames = () => {
+        // Get all active promotions
+        const promotionsRef = ref(db, 'promotions');
+        onValue(promotionsRef, (snapshot) => {
+            const promotionsData = snapshot.val();
+            if (!promotionsData) return;
+            
+            const activePromotions = Object.values(promotionsData).filter(promo => {
+                const now = new Date();
+                const startDate = new Date(promo.startDate);
+                const endDate = new Date(promo.endDate);
+                return promo.active && now >= startDate && now <= endDate;
+            });
+            
+            // Apply promotions to each game
+            gameList.forEach(game => {
+                let highestDiscount = 0;
+                let appliedPromotion = null;
+                
+                // Find the highest applicable discount
+                activePromotions.forEach(promo => {
+                    const gameHasTag = promo.tagType === 'category' 
+                        ? game.category && game.category.includes(promo.tagValue)
+                        : game.platform && game.platform.includes(promo.tagValue);
+                    
+                    if (gameHasTag && parseInt(promo.discountPercentage) > highestDiscount) {
+                        highestDiscount = parseInt(promo.discountPercentage);
+                        appliedPromotion = promo;
+                    }
+                });
+                
+                // Update game with promotion info
+                const gameRef = ref(db, `games/${game.id}`);
+                if (appliedPromotion) {
+                    const originalPrice = parseFloat(game.price);
+                    const discountAmount = originalPrice * (highestDiscount / 100);
+                    const discountedPrice = (originalPrice - discountAmount).toFixed(2);
+                    
+                    set(gameRef, {
+                        ...game,
+                        onSale: true,
+                        originalPrice: game.originalPrice || game.price,
+                        price: discountedPrice,
+                        discountPercentage: highestDiscount,
+                        promotionName: appliedPromotion.name
+                    });
+                } else if (game.onSale) {
+                    // Remove promotion if no longer applicable
+                    set(gameRef, {
+                        ...game,
+                        onSale: false,
+                        price: game.originalPrice,
+                        originalPrice: null,
+                        discountPercentage: null,
+                        promotionName: null
+                    });
+                }
+            });
+        }, { onlyOnce: true });
+    };
+    
+    const getAffectedGamesCount = () => {
+        if (!newPromotion.tagValue) return 0;
+        
+        return gameList.filter(game => {
+            if (newPromotion.tagType === 'category') {
+                return game.category && game.category.includes(newPromotion.tagValue);
+            } else {
+                return game.platform && game.platform.includes(newPromotion.tagValue);
+            }
+        }).length;
+    };
+    
+    const renderItem = ({ item }) => {
+        const isActive = new Date() >= new Date(item.startDate) && new Date() <= new Date(item.endDate);
+        
+        return (
+            <View style={styles.promotionItem}>
+                <View style={styles.promotionHeader}>
+                    <Text style={styles.promotionTitle}>{item.name}</Text>
+                    <View style={[styles.statusBadge, isActive ? styles.activeBadge : styles.inactiveBadge]}>
+                        <Text style={styles.statusText}>{isActive ? 'Ativa' : 'Inativa'}</Text>
+                    </View>
+                </View>
+                
+                <View style={styles.promotionDetails}>
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Desconto:</Text>
+                        <Text style={styles.discountValue}>{item.discountPercentage}%</Text>
+                    </View>
+                    
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Aplicado a:</Text>
+                        <Text style={styles.detailValue}>
+                            {item.tagType === 'category' ? 'Categoria' : 'Plataforma'}: {item.tagValue}
+                        </Text>
+                    </View>
+                    
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Período:</Text>
+                        <Text style={styles.detailValue}>
+                            {new Date(item.startDate).toLocaleDateString()} até {new Date(item.endDate).toLocaleDateString()}
+                        </Text>
+                    </View>
+                </View>
+                
+                <View style={styles.buttonContainer}>
+                    <TouchableOpacity 
+                        style={[styles.actionButton, styles.editButton]}
+                        onPress={() => startEditing(item)}
+                    >
+                        <Text style={styles.buttonText}>Editar</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                        style={[styles.actionButton, styles.deleteButton]}
+                        onPress={() => deletePromotion(item.id)}
+                    >
+                        <Text style={styles.buttonText}>Deletar</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    };
+    
     return (
-<View style={styles.container}>
-<Text></Text>
-</View>
+        <View style={styles.container}>
+            <ScrollView style={styles.inputContainer}>
+                <Text style={styles.formTitle}>Gerenciar Promoções</Text>
+                
+                <TextInput
+                    style={[
+                        styles.input,
+                        errors.name && styles.inputError
+                    ]}
+                    placeholder="Nome da Promoção *"
+                    value={newPromotion.name}
+                    onChangeText={(text) => {
+                        setNewPromotion({ ...newPromotion, name: text });
+                        setErrors({ ...errors, name: false });
+                    }}
+                />
+                {errors.name && <Text style={styles.errorText}>Nome é obrigatório</Text>}
+                
+                <TextInput
+                    style={[
+                        styles.input,
+                        errors.discountPercentage && styles.inputError
+                    ]}
+                    placeholder="Porcentagem de Desconto (1-99) *"
+                    value={newPromotion.discountPercentage}
+                    keyboardType="numeric"
+                    onChangeText={(text) => {
+                        const numericOnly = text.replace(/[^0-9]/g, '');
+                        setNewPromotion({ ...newPromotion, discountPercentage: numericOnly });
+                        setErrors({ ...errors, discountPercentage: false });
+                    }}
+                />
+                {errors.discountPercentage && <Text style={styles.errorText}>Desconto deve ser entre 1% e 99%</Text>}
+                
+                <Text style={styles.inputLabel}>Aplicar desconto por:</Text>
+                <View style={styles.radioContainer}>
+                    <TouchableOpacity 
+                        style={styles.radioOption}
+                        onPress={() => setNewPromotion({ ...newPromotion, tagType: 'category', tagValue: '' })}
+                    >
+                        <View style={[
+                            styles.radioButton,
+                            newPromotion.tagType === 'category' && styles.radioButtonSelected
+                        ]}>
+                            {newPromotion.tagType === 'category' && <View style={styles.radioButtonInner} />}
+                        </View>
+                        <Text style={styles.radioLabel}>Categoria</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                        style={styles.radioOption}
+                        onPress={() => setNewPromotion({ ...newPromotion, tagType: 'platform', tagValue: '' })}
+                    >
+                        <View style={[
+                            styles.radioButton,
+                            newPromotion.tagType === 'platform' && styles.radioButtonSelected
+                        ]}>
+                            {newPromotion.tagType === 'platform' && <View style={styles.radioButtonInner} />}
+                        </View>
+                        <Text style={styles.radioLabel}>Plataforma</Text>
+                    </TouchableOpacity>
+                </View>
+                
+                <Text style={styles.inputLabel}>
+                    Selecione {newPromotion.tagType === 'category' ? 'a categoria' : 'a plataforma'} *
+                </Text>
+                <View style={styles.tagContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {(newPromotion.tagType === 'category' ? categoryTags : platformTags).map((tag, index) => (
+                            <TouchableOpacity
+                                key={index}
+                                style={[
+                                    styles.tag,
+                                    newPromotion.tagValue === tag && styles.selectedTag
+                                ]}
+                                onPress={() => {
+                                    setNewPromotion({ ...newPromotion, tagValue: tag });
+                                    setErrors({ ...errors, tagValue: false });
+                                }}
+                            >
+                                <Text style={[
+                                    styles.tagText,
+                                    newPromotion.tagValue === tag && styles.selectedTagText
+                                ]}>
+                                    {tag}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+                {errors.tagValue && <Text style={styles.errorText}>
+                    {newPromotion.tagType === 'category' ? 'Categoria' : 'Plataforma'} é obrigatória
+                </Text>}
+                
+                {newPromotion.tagValue && (
+                    <Text style={styles.affectedGamesText}>
+                        Esta promoção afetará {getAffectedGamesCount()} jogo(s)
+                    </Text>
+                )}
+                
+                <Text style={styles.inputLabel}>Data de Início *</Text>
+                <TextInput
+                    style={[
+                        styles.input,
+                        errors.startDate && styles.inputError
+                    ]}
+                    placeholder="AAAA-MM-DD"
+                    value={newPromotion.startDate}
+                    onChangeText={(text) => {
+                        setNewPromotion({ ...newPromotion, startDate: text });
+                        setErrors({ ...errors, startDate: false });
+                    }}
+                />
+                {errors.startDate && <Text style={styles.errorText}>Data de início é obrigatória</Text>}
+                
+                <Text style={styles.inputLabel}>Data de Término *</Text>
+                <TextInput
+                    style={[
+                        styles.input,
+                        errors.endDate && styles.inputError
+                    ]}
+                    placeholder="AAAA-MM-DD"
+                    value={newPromotion.endDate}
+                    onChangeText={(text) => {
+                        setNewPromotion({ ...newPromotion, endDate: text });
+                        setErrors({ ...errors, endDate: false });
+                    }}
+                />
+                {errors.endDate && <Text style={styles.errorText}>Data de término deve ser posterior à data de início</Text>}
+                
+                {editingId ? (
+                    <View style={styles.formButtonsContainer}>
+                        <TouchableOpacity 
+                            style={[styles.addButton, styles.updateButton]} 
+                            onPress={updatePromotion}
+                        >
+                            <Text style={styles.buttonText}>Atualizar Promoção</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[styles.addButton, styles.cancelButton]} 
+                            onPress={cancelEdit}
+                        >
+                            <Text style={styles.buttonText}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <TouchableOpacity style={styles.addButton} onPress={addPromotion}>
+                        <Text style={styles.buttonText}>Adicionar Promoção</Text>
+                    </TouchableOpacity>
+                )}
+                
+                <Text style={styles.listTitle}>Promoções Cadastradas:</Text>
+                <FlatList
+                    data={promotions}
+                    renderItem={renderItem}
+                    keyExtractor={item => item.id}
+                    style={styles.list}
+                />
+            </ScrollView>
+        </View>
     );
 }
 function APIScreen() {
@@ -568,9 +1076,6 @@ export default function Menu() {
                             case 'Comentarios':
                                 iconName = 'comment';
                                 break;
-                            case 'Ler API':
-                                iconName = 'cloud-download';
-                                break;
                             default:
                                 iconName = '';
                                 break;
@@ -594,36 +1099,24 @@ export default function Menu() {
                     name="Comentarios"
                     component={PostScreen}
                 />
-                <Tab.Screen name="Ler API" component={APIScreen} />
             </Tab.Navigator>
         </NavigationContainer>
     );
 }
 const styles = StyleSheet.create({
+    // Layout and Container Styles
     container: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: '#f5f5f5',
     },
-    iconTabRound: {
-        width: 60,
-        height: 90,
-        borderRadius: 30,
-        marginBottom: 20,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        elevation: 6,
-        shadowColor: '#006400',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-    },
     inputContainer: {
         width: '100%',
         padding: 20,
     },
+    
+    // Text Styles
     formTitle: {
         fontSize: 24,
         fontWeight: 'bold',
@@ -631,6 +1124,32 @@ const styles = StyleSheet.create({
         marginBottom: 20,
         textAlign: 'center',
     },
+    listTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginVertical: 15,
+        color: '#333',
+        textAlign: 'center',
+    },
+    inputLabel: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 10,
+        marginBottom: 5,
+    },
+    errorText: {
+        color: '#f44336',
+        marginBottom: 10,
+        fontSize: 12,
+    },
+    buttonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    
+    // Input Styles
     input: {
         borderWidth: 1,
         borderColor: '#ddd',
@@ -646,11 +1165,8 @@ const styles = StyleSheet.create({
     inputError: {
         borderColor: '#f44336',
     },
-    errorText: {
-        color: '#f44336',
-        marginBottom: 10,
-        fontSize: 12,
-    },
+    
+    // Button Styles
     addButton: {
         backgroundColor: '#4a148c', // Purple color for gaming theme
         padding: 15,
@@ -658,78 +1174,20 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
     },
-    buttonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    list: {
-        width: '100%',
-    },
-    listTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        marginVertical: 15,
-        color: '#333',
-        textAlign: 'center',
-    },
-    gameItem: {
-        backgroundColor: '#fff',
-        padding: 15,
-        borderRadius: 8,
-        marginBottom: 15,
-        borderWidth: 1,
-        borderColor: '#ddd',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    gameHeader: {
+    formButtonsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingBottom: 10,
+        marginBottom: 20,
     },
-    gameTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#4a148c', // Purple color for gaming theme
-        flex: 3,
-    },
-    gamePrice: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#4CAF50',
+    updateButton: {
+        backgroundColor: '#4a148c', // Purple color for gaming theme
         flex: 1,
-        textAlign: 'right',
-    },
-    gameDetails: {
-        marginBottom: 10,
-    },
-    detailRow: {
-        flexDirection: 'row',
-        marginBottom: 5,
-    },
-    detailLabel: {
-        fontWeight: 'bold',
         marginRight: 5,
-        color: '#555',
     },
-    detailValue: {
-        color: '#333',
-    },
-    descriptionContainer: {
-        marginTop: 5,
-    },
-    description: {
-        color: '#666',
-        marginTop: 3,
-        lineHeight: 20,
+    cancelButton: {
+        backgroundColor: '#f44336',
+        flex: 1,
+        marginLeft: 5,
     },
     buttonContainer: {
         flexDirection: 'row',
@@ -749,27 +1207,178 @@ const styles = StyleSheet.create({
     deleteButton: {
         backgroundColor: '#f44336',
     },
-    formButtonsContainer: {
+    
+    // List and Item Styles
+    list: {
+        width: '100%',
+    },
+    gameItem: {
+        backgroundColor: '#fff',
+        padding: 15,
+        borderRadius: 8,
+        marginBottom: 15,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    promotionItem: {
+        backgroundColor: '#fff',
+        padding: 15,
+        borderRadius: 8,
+        marginBottom: 15,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    
+    // Header Styles
+    gameHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 20,
+        alignItems: 'center',
+        marginBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+        paddingBottom: 10,
     },
-    updateButton: {
-        backgroundColor: '#4a148c', // Purple color for gaming theme
-        flex: 1,
-        marginRight: 5,
+    promotionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+        paddingBottom: 10,
     },
-    cancelButton: {
-        backgroundColor: '#f44336',
+    
+    // Title Styles
+    gameTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#4a148c', // Purple color for gaming theme
+        flex: 3,
+    },
+    promotionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#4a148c',
+        flex: 3,
+    },
+    
+    // Price Styles
+    gamePrice: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#4CAF50',
         flex: 1,
-        marginLeft: 5,
-    },inputLabel: {
+        textAlign: 'right',
+    },
+    priceContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    originalPrice: {
+        fontSize: 14,
+        color: '#888',
+        textDecorationLine: 'line-through',
+        marginRight: 8,
+    },
+    discountedPrice: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#333',
-        marginTop: 10,
+        color: '#f44336',
+    },
+    
+    // Detail Styles
+    gameDetails: {
+        marginBottom: 10,
+    },
+    promotionDetails: {
+        marginBottom: 10,
+    },
+    detailRow: {
+        flexDirection: 'row',
         marginBottom: 5,
     },
+    detailLabel: {
+        fontWeight: 'bold',
+        marginRight: 5,
+        color: '#555',
+    },
+    detailValue: {
+        color: '#333',
+    },
+    discountValue: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#f44336',
+    },
+    
+    // Description Styles
+    descriptionContainer: {
+        marginTop: 5,
+    },
+    description: {
+        color: '#666',
+        marginTop: 3,
+        lineHeight: 20,
+    },
+    
+    // Badge Styles
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    activeBadge: {
+        backgroundColor: '#4CAF50',
+    },
+    inactiveBadge: {
+        backgroundColor: '#9e9e9e',
+    },
+    statusText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 12,
+    },
+    discountBadge: {
+        backgroundColor: '#f44336',
+        color: 'white',
+        fontWeight: 'bold',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 12,
+        fontSize: 12,
+        overflow: 'hidden',
+    },
+    
+    // Tab Navigation Styles
+    iconTabRound: {
+        width: 60,
+        height: 90,
+        borderRadius: 30,
+        marginBottom: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 6,
+        shadowColor: '#006400',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+    },
+    
+    // Tag System Styles
     tagContainer: {
         flexDirection: 'row',
         flexWrap: 'nowrap',
@@ -833,5 +1442,47 @@ const styles = StyleSheet.create({
     addCustomTagButtonText: {
         color: '#fff',
         fontWeight: 'bold',
+    },
+    
+    // Radio Button Styles
+    radioContainer: {
+        flexDirection: 'row',
+        marginBottom: 15,
+    },
+    radioOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 20,
+    },
+    radioButton: {
+        height: 20,
+        width: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#4a148c',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    radioButtonSelected: {
+        borderColor: '#4a148c',
+    },
+    radioButtonInner: {
+        height: 10,
+        width: 10,
+        borderRadius: 5,
+        backgroundColor: '#4a148c',
+    },
+    radioLabel: {
+        fontSize: 16,
+        color: '#333',
+    },
+    
+    // Promotion Specific Styles
+    affectedGamesText: {
+        fontSize: 14,
+        color: '#4a148c',
+        fontStyle: 'italic',
+        marginBottom: 15,
     },
 });
