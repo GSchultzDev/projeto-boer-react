@@ -9,8 +9,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Login({ changeStatus }) {
   const [form, setForm] = useState({
-    email: "teste4@hotmail.com",
-    password: "Jacarezao14@",
+    email: "",
+    password: "",
   });
   const [type, setType] = useState("login");
   const [errors, setErrors] = useState({

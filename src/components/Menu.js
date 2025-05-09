@@ -6,6 +6,9 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import { db } from '../services/connectionFirebase';
 import { getAuth } from 'firebase/auth';
 import { ref, push, onValue, set } from 'firebase/database';
+import AwesomeAlert from 'react-native-awesome-alerts';
+
+
 function HomeScreen() {
     return (
 <View style={styles.container}>
@@ -25,6 +28,9 @@ function ListScreen() {
     });
     const [errors, setErrors] = React.useState({});
     const [editingId, setEditingId] = React.useState(null);
+
+    const [showAlert, setShowAlert] = React.useState(false);
+    const [gameToDelete, setGameToDelete] = React.useState(null);
     
     const [categoryTags, setCategoryTags] = React.useState(['RPG', 'Ação', 'Aventura', 'Estratégia', 'Esporte', 'Simulação', 'Corrida']);
     const [platformTags, setPlatformTags] = React.useState(['PC', 'PS5', 'PS4', 'Xbox Series X', 'Xbox One', 'Nintendo Switch', 'Mobile']);
@@ -141,11 +147,17 @@ function ListScreen() {
         const gameRef = ref(db, `games/${id}`);
         set(gameRef, null)
             .then(() => {
+                // Success message could be added here
             })
             .catch((error) => {
                 console.error("Error deleting game: ", error);
                 alert('Erro ao deletar produto');
             });
+    };
+
+    const showDeleteConfirmation = (id) => {
+        setGameToDelete(id);
+        setShowAlert(true);
     };
 
     const toggleCategoryTag = (tag) => {
@@ -280,7 +292,7 @@ function ListScreen() {
                 
                 <TouchableOpacity 
                     style={[styles.actionButton, styles.deleteButton]}
-                    onPress={() => deletegame(item.id)}
+                    onPress={() => showDeleteConfirmation(item.id)}
                 >
                     <Text style={styles.buttonText}>Deletar</Text>
                 </TouchableOpacity>
@@ -323,7 +335,6 @@ function ListScreen() {
                 />
                 {errors.price && <Text style={styles.errorText}>Preço é obrigatório</Text>}
 
-                {/* Replace the category TextInput with a tag system */}
                 <Text style={styles.inputLabel}>Categoria(s) *</Text>
                 <View style={styles.tagContainer}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -372,7 +383,6 @@ function ListScreen() {
                 
                 {errors.category && <Text style={styles.errorText}>Categoria é obrigatória</Text>}
 
-                {/* Replace the platform TextInput with a tag system */}
                 <Text style={styles.inputLabel}>Plataforma(s) *</Text>
                 <View style={styles.tagContainer}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -483,6 +493,33 @@ function ListScreen() {
                     style={styles.list}
                 />
             </ScrollView>
+            <AwesomeAlert
+                show={showAlert}
+                showProgress={false}
+                title="Confirmação"
+                message="Tem certeza que deseja excluir este jogo?"
+                closeOnTouchOutside={true}
+                closeOnHardwareBackPress={false}
+                showCancelButton={true}
+                showConfirmButton={true}
+                cancelText="Cancelar"
+                confirmText="Deletar"
+                confirmButtonColor="#DD6B55"
+                cancelButtonColor="#8A2BE2"
+                onCancelPressed={() => {
+                    setShowAlert(false);
+                }}
+                onConfirmPressed={() => {
+                    if (gameToDelete) {
+                        deletegame(gameToDelete);
+                        setGameToDelete(null);
+                    }
+                    setShowAlert(false);
+                }}
+                titleStyle={{ fontSize: 18, fontWeight: 'bold' }}
+                messageStyle={{ fontSize: 16 }}
+                contentContainerStyle={{ borderRadius: 10, padding: 10 }}
+            />
         </View>
     );
 }
